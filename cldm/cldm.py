@@ -359,7 +359,42 @@ class ControlLDM(LatentDiffusion):
         n_row = min(z.shape[0], n_row)
         log["reconstruction"] = self.decode_first_stage(z)
         log["control"] = c_cat * 2.0 - 1.0
-        log["conditioning"] = log_txt_as_img((512, 512), batch[self.cond_stage_key], size=16)
+        # 若条件是文本，渲染为文字图片；否则（如图像tensor/ndarray），直接当作图像记录
+        cond_val = batch[self.cond_stage_key]
+        try:
+            if isinstance(cond_val, (list, tuple)) and len(cond_val) > 0 and isinstance(cond_val[0], str):
+                log["conditioning"] = log_txt_as_img((512, 512), cond_val, size=16)
+            else:
+                import torch as _torch
+                import numpy as _np
+                img = cond_val
+                if isinstance(img, _np.ndarray):
+                    img = _torch.from_numpy(img)
+                if not _torch.is_tensor(img):
+                    # 一些数据集可能返回 list[np.ndarray]
+                    if isinstance(img, (list, tuple)) and len(img) > 0:
+                        if isinstance(img[0], _np.ndarray):
+                            img = _torch.from_numpy(_np.stack(img, axis=0))
+                        elif _torch.is_tensor(img[0]):
+                            img = _torch.stack(img, dim=0)
+                # 归一化到 [0,1]
+                if img.dtype != _torch.float32:
+                    img = img.float()
+                if img.max() > 1.5:
+                    img = img / 255.0
+                # HWC/BHWC -> BCHW
+                if img.ndim == 3:
+                    # HWC
+                    if img.shape[-1] in (1, 3, 4):
+                        img = img.permute(2, 0, 1).unsqueeze(0)
+                    else:
+                        img = img.unsqueeze(0)
+                elif img.ndim == 4 and img.shape[-1] in (1, 3, 4):
+                    img = img.permute(0, 3, 1, 2)
+                log["conditioning"] = img[:N]
+        except Exception:
+         
+            pass
 
         if plot_diffusion_rows:
             # get diffusion row
@@ -380,10 +415,17 @@ class ControlLDM(LatentDiffusion):
             log["diffusion_row"] = diffusion_grid
 
         if sample:
-            # get denoise row
-            samples, z_denoise_row = self.sample_log(cond={"c_concat": [c_cat], "c_crossattn": [c]},
-                                                     batch_size=N, ddim=use_ddim,
-                                                     ddim_steps=ddim_steps, eta=ddim_eta)
+            cond = {}
+            if c_cat is not None:
+                cond["c_concat"] = [c_cat]
+            if c is not None:
+                cond["c_crossattn"] = [c]
+
+            samples, z_denoise_row = self.sample_log(
+                cond=cond,
+                batch_size=N, ddim=use_ddim,
+                ddim_steps=ddim_steps, eta=ddim_eta
+            )
             x_samples = self.decode_first_stage(samples)
             log["samples"] = x_samples
             if plot_denoise_rows:
@@ -391,26 +433,48 @@ class ControlLDM(LatentDiffusion):
                 log["denoise_row"] = denoise_grid
 
         if unconditional_guidance_scale > 1.0:
-            uc_cross = self.get_unconditional_conditioning(N)
-            uc_cat = c_cat  # torch.zeros_like(c_cat)
-            uc_full = {"c_concat": [uc_cat], "c_crossattn": [uc_cross]}
-            samples_cfg, _ = self.sample_log(cond={"c_concat": [c_cat], "c_crossattn": [c]},
-                                             batch_size=N, ddim=use_ddim,
-                                             ddim_steps=ddim_steps, eta=ddim_eta,
-                                             unconditional_guidance_scale=unconditional_guidance_scale,
-                                             unconditional_conditioning=uc_full,
-                                             )
+            uc_full = {}
+            if c_cat is not None:
+                uc_full["c_concat"] = [torch.zeros_like(c_cat)]
+            if c is not None:
+                uc_full["c_crossattn"] = [torch.zeros_like(c)]
+
+            cond_cfg = {}
+            if c_cat is not None:
+                cond_cfg["c_concat"] = [c_cat]
+            if c is not None:
+                cond_cfg["c_crossattn"] = [c]
+
+            samples_cfg, _ = self.sample_log(
+                cond=cond_cfg,
+                batch_size=N,
+                ddim=use_ddim,
+                ddim_steps=ddim_steps,
+                eta=ddim_eta,
+                unconditional_guidance_scale=unconditional_guidance_scale,
+                unconditional_conditioning=uc_full,
+            )
             x_samples_cfg = self.decode_first_stage(samples_cfg)
             log[f"samples_cfg_scale_{unconditional_guidance_scale:.2f}"] = x_samples_cfg
+
+
 
         return log
 
     @torch.no_grad()
     def sample_log(self, cond, batch_size, ddim, ddim_steps, **kwargs):
         ddim_sampler = DDIMSampler(self)
-        b, c, h, w = cond["c_concat"][0].shape
-        shape = (self.channels, h // 8, w // 8)
-        samples, intermediates = ddim_sampler.sample(ddim_steps, batch_size, shape, cond, verbose=False, **kwargs)
+        if "c_concat" in cond and cond["c_concat"] and cond["c_concat"][0] is not None:
+            # ControlNet 情况：根据图像条件的尺寸推 latent shape
+            b, c, h, w = cond["c_concat"][0].shape
+            shape = (self.channels, h // 8, w // 8)
+        else:
+            # 纯 cross-attn 情况：用 latent 分辨率
+            shape = (self.channels, self.image_size // 8, self.image_size // 8)
+
+        samples, intermediates = ddim_sampler.sample(
+            ddim_steps, batch_size, shape, cond, verbose=False, **kwargs
+        )
         return samples, intermediates
 
     def configure_optimizers(self):

@@ -1,3 +1,41 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Checkpoints / weights
+checkpoints/
+*.ckpt
+*.pth
+*.pt
+
+# Datasets / artifacts
+data/
+datasets/
+*.npz
+*.npy
+*.zip
+*.tar
+*.tar.gz
+
+# Logs and results
+wandb_logs/
+wandb/
+logs/
+test_results/
+inference_outs/
+inference_out.png
+
+# Media
+*.mp4
+*.avi
+*.mov
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
 .idea/
 
 training/

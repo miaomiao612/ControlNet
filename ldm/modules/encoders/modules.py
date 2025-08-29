@@ -1,12 +1,16 @@
+import sys
+sys.path.append("/workspace/dinov3")   # 直接告诉 Python 去 /workspace/dinov3 里找
+from dinov3.models import vision_transformer as vits
 import torch
 import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
-
 from transformers import T5Tokenizer, T5EncoderModel, CLIPTokenizer, CLIPTextModel
-
-import open_clip
+from torchvision import transforms
+from PIL import Image
+import os
+#import open_clip
+import numpy as np
 from ldm.util import default, count_params
-
 
 class AbstractEncoder(nn.Module):
     def __init__(self):
@@ -92,7 +96,7 @@ class FrozenCLIPEmbedder(AbstractEncoder):
         "pooled",
         "hidden"
     ]
-    def __init__(self, version="openai/clip-vit-large-patch14", device="cuda", max_length=77,
+    def __init__(self, version="/workspace/clip-vit-large-patch14", device="cuda", max_length=77,
                  freeze=True, layer="last", layer_idx=None):  # clip-vit-base-patch32
         super().__init__()
         assert layer in self.LAYERS
@@ -131,83 +135,71 @@ class FrozenCLIPEmbedder(AbstractEncoder):
         return self(text)
 
 
-class FrozenOpenCLIPEmbedder(AbstractEncoder):
-    """
-    Uses the OpenCLIP transformer encoder for text
-    """
-    LAYERS = [
-        #"pooled",
-        "last",
-        "penultimate"
-    ]
-    def __init__(self, arch="ViT-H-14", version="laion2b_s32b_b79k", device="cuda", max_length=77,
-                 freeze=True, layer="last"):
+class FrozenDINOv3Embedder(AbstractEncoder):
+    """Use DINOv3 features as condition encoder"""
+    def __init__(self,
+                 backbone_ckpt="/workspace/dinov3/dinov3_vitl16_pretrain_sat493m-eadcf0ff.pth",
+                 repo_dir="/workspace/dinov3",
+                 model_name="vit_large",
+                 patch_size=16,
+                 out_dim=768,
+                 align_dim=768,
+                 device="cuda"):
         super().__init__()
-        assert layer in self.LAYERS
-        model, _, _ = open_clip.create_model_and_transforms(arch, device=torch.device('cpu'), pretrained=version)
-        del model.visual
-        self.model = model
+        import sys, os
+        sys.path.insert(0, repo_dir)
+       
+    
 
-        self.device = device
-        self.max_length = max_length
-        if freeze:
-            self.freeze()
-        self.layer = layer
-        if self.layer == "last":
-            self.layer_idx = 0
-        elif self.layer == "penultimate":
-            self.layer_idx = 1
+        if model_name == "vit_large":
+            self.model = vits.vit_large(patch_size=patch_size, num_classes=0)
+        elif model_name == "vit_base":
+            self.model = vits.vit_base(patch_size=patch_size, num_classes=0)
+        elif model_name == "vit_small":
+            self.model = vits.vit_small(patch_size=patch_size, num_classes=0)
         else:
-            raise NotImplementedError()
+            raise ValueError(f"不支持的模型名称: {model_name}")
 
-    def freeze(self):
-        self.model = self.model.eval()
-        for param in self.parameters():
-            param.requires_grad = False
+        # 加载权重
+        if os.path.exists(backbone_ckpt):
+            state_dict = torch.load(backbone_ckpt, map_location="cpu")
+            if "model" in state_dict:
+                state_dict = state_dict["model"]
+            self.model.load_state_dict(state_dict, strict=False)
+            print(f"✅ 成功加载DINOv3权重: {backbone_ckpt}")
+        
+        self.model.eval().to(device)
+        self.device = device
 
-    def forward(self, text):
-        tokens = open_clip.tokenize(text)
-        z = self.encode_with_transformer(tokens.to(self.device))
-        return z
+        self.proj = nn.Linear(self.model.embed_dim, out_dim).to(device) 
+        print(f"DINOv3权重加载完成，输出维度: {out_dim}")
 
-    def encode_with_transformer(self, text):
-        x = self.model.token_embedding(text)  # [batch_size, n_ctx, d_model]
-        x = x + self.model.positional_embedding
-        x = x.permute(1, 0, 2)  # NLD -> LND
-        x = self.text_transformer_forward(x, attn_mask=self.model.attn_mask)
-        x = x.permute(1, 0, 2)  # LND -> NLD
-        x = self.model.ln_final(x)
-        return x
+        # # MLP：768 -> 768（带非线性），让分布更接近 CLIP
+        # self.align_proj = nn.Sequential(
+        #     nn.Linear(out_dim, align_dim),
+        #     nn.GELU(),
+        #     nn.Linear(align_dim, align_dim)
+        # ).to(device)
 
-    def text_transformer_forward(self, x: torch.Tensor, attn_mask = None):
-        for i, r in enumerate(self.model.transformer.resblocks):
-            if i == len(self.model.transformer.resblocks) - self.layer_idx:
-                break
-            if self.model.transformer.grad_checkpointing and not torch.jit.is_scripting():
-                x = checkpoint(r, x, attn_mask)
-            else:
-                x = r(x, attn_mask=attn_mask)
-        return x
+        self.preprocess = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=(0.430, 0.411, 0.296),
+                                 std=(0.213, 0.156, 0.143)),
+        ])
 
-    def encode(self, text):
-        return self(text)
+    def forward(self, images):
+        if not torch.is_tensor(images):
+            images = torch.stack([self.preprocess(img) for img in images])
+        images = images.to(self.device)
 
+        with torch.no_grad():
+            feats = self.model.get_intermediate_layers(images, n=1)[0]  # [B, N, 1024]
+        feats = feats.to(self.device)
+        feats = self.proj(feats)
+        # feats = self.align_proj(feats)
+        return feats
 
-class FrozenCLIPT5Encoder(AbstractEncoder):
-    def __init__(self, clip_version="openai/clip-vit-large-patch14", t5_version="google/t5-v1_1-xl", device="cuda",
-                 clip_max_length=77, t5_max_length=77):
-        super().__init__()
-        self.clip_encoder = FrozenCLIPEmbedder(clip_version, device, max_length=clip_max_length)
-        self.t5_encoder = FrozenT5Embedder(t5_version, device, max_length=t5_max_length)
-        print(f"{self.clip_encoder.__class__.__name__} has {count_params(self.clip_encoder)*1.e-6:.2f} M parameters, "
-              f"{self.t5_encoder.__class__.__name__} comes with {count_params(self.t5_encoder)*1.e-6:.2f} M params.")
-
-    def encode(self, text):
-        return self(text)
-
-    def forward(self, text):
-        clip_z = self.clip_encoder.encode(text)
-        t5_z = self.t5_encoder.encode(text)
-        return [clip_z, t5_z]
-
+    def encode(self, images):
+        return self(images)
 

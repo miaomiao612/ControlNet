@@ -129,11 +129,11 @@ Note that all weights inside the ControlNet are also copied from SD so that no l
 
 We provide a simple script for you to achieve this easily. If your SD filename is "./models/v1-5-pruned.ckpt" and you want the script to save the processed model (SD+ControlNet) at location "./models/control_sd15_ini.ckpt", you can just run:
 
-    python tool_add_control.py ./models/v1-5-pruned.ckpt ./models/control_sd15_ini.ckpt
+    python tool_add_control.py /workspace/v1-5-pruned-emaonly.ckpt  /workspace/ControlNet/checkpoints/control_sd15_ini.ckpt
 
 Or if you are using SD2:
 
-    python tool_add_control_sd21.py ./models/v2-1_512-ema-pruned.ckpt ./models/control_sd21_ini.ckpt
+    python tool_add_control_sd21.py /workspace/v1-5-pruned-emaonly.ckpt /workspace/ControlNet/checkpoints/control_sd15_ini.ckpt
 
 You may also use other filenames as long as the command is "python tool_add_control.py input_path output_path".
 

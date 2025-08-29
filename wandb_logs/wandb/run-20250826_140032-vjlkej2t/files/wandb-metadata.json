@@ -1,0 +1,40 @@
+{
+  "os": "Linux-5.15.0-139-generic-x86_64-with-glibc2.35",
+  "python": "CPython 3.10.18",
+  "startedAt": "2025-08-26T06:00:32.972979Z",
+  "program": "/workspace/ControlNet/tutorial_train.py",
+  "codePath": "tutorial_train.py",
+  "codePathLocal": "tutorial_train.py",
+  "git": {
+    "remote": "https://github.com/miaomiao612/ControlNet.git",
+    "commit": "ed85cd1e25a5ed592f7d8178495b4483de0331bf"
+  },
+  "email": "dddoctorr612@gmail.com",
+  "root": "./wandb_logs",
+  "host": "job-x8bba041-484l5",
+  "executable": "/root/miniconda3/envs/control_1/bin/python",
+  "cpu_count": 64,
+  "cpu_count_logical": 128,
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "15360877133824",
+      "used": "11571829346304"
+    }
+  },
+  "memory": {
+    "total": "1080729616384"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA GeForce RTX 4090",
+      "memoryTotal": "25757220864",
+      "cudaCores": 16384,
+      "architecture": "Ada",
+      "uuid": "GPU-982e6ceb-e24e-1119-22a2-47031afba368"
+    }
+  ],
+  "cudaVersion": "12.4",
+  "writerId": "j5c47owpcwe28flz5ugazz6k6in0uf77"
+}

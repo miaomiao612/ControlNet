@@ -1,0 +1,73 @@
+_wandb:
+    value:
+        cli_version: 0.21.1
+        e:
+            69vd7nozbq335f4njxjqljl2kksh3of4:
+                codePath: tutorial_train.py
+                codePathLocal: tutorial_train.py
+                cpu_count: 64
+                cpu_count_logical: 128
+                cudaVersion: "12.4"
+                disk:
+                    /:
+                        total: "15360877133824"
+                        used: "11571829338112"
+                email: dddoctorr612@gmail.com
+                executable: /root/miniconda3/envs/control_1/bin/python
+                git:
+                    commit: ed85cd1e25a5ed592f7d8178495b4483de0331bf
+                    remote: https://github.com/miaomiao612/ControlNet.git
+                gpu: NVIDIA GeForce RTX 4090
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Ada
+                      cudaCores: 16384
+                      memoryTotal: "25757220864"
+                      name: NVIDIA GeForce RTX 4090
+                      uuid: GPU-982e6ceb-e24e-1119-22a2-47031afba368
+                host: job-x8bba041-484l5
+                memory:
+                    total: "1080729616384"
+                os: Linux-5.15.0-139-generic-x86_64-with-glibc2.35
+                program: /workspace/ControlNet/tutorial_train.py
+                python: CPython 3.10.18
+                root: ./wandb_logs
+                startedAt: "2025-08-26T05:57:30.986114Z"
+                writerId: 69vd7nozbq335f4njxjqljl2kksh3of4
+        m:
+            - "1": trainer/global_step
+              "6":
+                - 3
+              "7": []
+            - "2": '*'
+              "5": 1
+              "6":
+                - 1
+              "7": []
+        python_version: 3.10.18
+        t:
+            "1":
+                - 1
+                - 9
+                - 11
+                - 41
+                - 49
+                - 103
+                - 105
+            "2":
+                - 1
+                - 9
+                - 11
+                - 41
+                - 49
+                - 103
+                - 105
+            "3":
+                - 7
+                - 13
+                - 66
+            "4": 3.10.18
+            "5": 0.21.1
+            "6": 4.40.0
+            "12": 0.21.1
+            "13": linux-x86_64
